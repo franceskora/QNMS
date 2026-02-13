@@ -21,7 +21,8 @@ def get_gemini_decision(freq_ghz, current_uA, temp_k):
     - Drive Current: {current_uA:.1f} uA
     - Temperature: {temp_k:.1f} K
     
-    TASK: If Frequency < 2.0 GHz, recommend 'AVS' (Adaptive Voltage Scaling).
+    
+    TASK: If Frequency < 2.5 GHz, recommend 'REPAIR'. 
     If Temp > 350K, recommend 'THROTTLE'.
     Otherwise, say 'NOMINAL'.
     
