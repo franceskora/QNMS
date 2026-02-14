@@ -11,7 +11,7 @@ from datetime import datetime
 from ai_module import get_gemini_decision 
 from isaac_bridge import bridge, RobotAction 
 
-# --- 1. SYSTEM STATE OBJECT ---
+# SYSTEM STATE OBJECT
 class SystemState:
     def __init__(self, experiment_id, seed=42):
         self.experiment_id = experiment_id
@@ -19,7 +19,6 @@ class SystemState:
         self.seed = seed
         self.oscillator = []
         self.freq_history = []
-        # Upgraded timeline storage: dicts instead of raw strings
         self.action_timeline = [{"time": 0, "ai_intent": "BOOT", "robot_action": "INITIALIZE", "status": "NOMINAL"}]
         
         np.random.seed(seed)
@@ -34,10 +33,10 @@ class SystemState:
                 'last_current': 10e-6
             })
 
-# --- 2. SYSTEM CONFIGURATION & AESTHETICS ---
+# SYSTEM CONFIGURATION & AESTHETICS
 st.set_page_config(page_title="FICKS LABS | SURGE OS", layout="wide")
 
-# Subtle, professional engineering theme (Dark slate with subtle purple accents)
+
 st.markdown("""
     <style>
     .main { background: #0E0E12; color: #E2DEDB; font-family: 'Inter', sans-serif; }
@@ -51,7 +50,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- DATABASE INITIALIZATION ---
+# DATABASE INITIALIZATION
 if 'db_ready' not in st.session_state:
     with sqlite3.connect('factory_data.db') as conn:
         cursor = conn.cursor()
@@ -94,7 +93,7 @@ if 'state' not in st.session_state:
     )
 
 
-# --- 3. ORCHESTRATION ---
+# SIDE BAR
 with st.sidebar:
     st.markdown("<div class='ficks-header'>FICKS LABS</div>", unsafe_allow_html=True)
     run_mode = st.radio("Run Mode", ["Live", "Replay"])
@@ -104,7 +103,6 @@ with st.sidebar:
     
     st.divider()
     
-    # Download button logic (safely checks if file exists first)
     if os.path.exists("factory_data.db"):
         with open("factory_data.db", "rb") as fp:
             st.download_button(label="Download DB", data=fp, file_name="factory_data.db")
@@ -158,10 +156,8 @@ def solver_loop():
     avg_temp /= 5
     healths = [1.0 - stage['defects'] for stage in s.oscillator]
     avg_health = sum(healths) / len(healths)
-
-    # --- UI RENDER: PROFESSIONAL SCADA LAYOUT ---
     
-    # LAYER 4: WORLD MODEL PANEL
+    # MODEL PANEL
     env_status = "ONLINE" if world_state.environment != "Simulated_Environment" else "FALLBACK"
     rad_level = "HIGH (1.2 Sv/h)" if mission == "Orbital_Satellite" else "NOMINAL (Background)"
     grav_level = "MICRO-G" if mission == "Orbital_Satellite" else "1.0 G"
@@ -178,7 +174,6 @@ def solver_loop():
     col_telemetry, col_kinematics = st.columns([1.2, 1])
 
     with col_telemetry:
-        # Core Telemetry
         c1, c2, c3 = st.columns(3)
         c1.markdown(f"<div class='metric-box'><div class='metric-label'>Freq Stability</div><div class='metric-value'>{freq_ghz:.2f} GHz</div></div>", unsafe_allow_html=True)
         c2.markdown(f"<div class='metric-box'><div class='metric-label'>Thermal Core</div><div class='metric-value'>{avg_temp:.1f} K</div></div>", unsafe_allow_html=True)
@@ -190,17 +185,17 @@ def solver_loop():
         st.plotly_chart(fig, use_container_width=True)
 
     with col_kinematics:
-        # LAYER 1 & 2: ROBOT STATE & JOINT VISUALIZER
+        # ROBOT STATE & JOINT VISUALIZER
         st.markdown("<div style='font-size:0.9rem; color:#888; margin-bottom:5px;'>KINEMATIC STATE VECTORS</div>", unsafe_allow_html=True)
         
-        # Parse simulated or live joints (Default Franka pose if empty)
+        # Parse simulated or live joints 
         raw_joints = world_state.thermal_map.get('Joint_Data', "0.0, -0.78, 0.0, -2.35, 0.0, 1.57, 0.78")
         try:
             joints = [float(x.strip()) for x in str(raw_joints).split(',')]
         except:
             joints = [0.0, -0.78, 0.0, -2.35, 0.0, 1.57, 0.78]
         
-        categories = [f'J{i+1}' for i in range(len(joints[:7]))] # 7 DOF Arm
+        categories = [f'J{i+1}' for i in range(len(joints[:7]))]
         
         fig_radar = go.Figure()
         fig_radar.add_trace(go.Scatterpolar(
@@ -223,40 +218,40 @@ def solver_loop():
     decision = "NOMINAL"
 
    # ACTION LOOP & TIMELINE
-    if freq_ghz < 20.0 and auto_repair: # Using 20.0 threshold to force failure for the video
+    if freq_ghz < 20.0 and auto_repair:
         decision = get_gemini_decision(freq_ghz, stage_currents[0]*1e6, avg_temp)
         
-        # RESTORED: Log AI Decision to DB
+        # Log AI Decision to DB
         log_to_db("INSERT INTO ai_decisions VALUES (?,?,?,?,?,?,?)", 
                   (s.experiment_id, s.timestep, freq_ghz, avg_temp, stage_currents[0], decision, "Floor Violation"))
 
-        # --- GOOD LINES (Verified/Research Grade) ---
+        
     if "REPAIR" in decision.upper() and s.action_timeline[0]["ai_intent"] != "REPAIR":
-        # 1. Capture the return from the Brev bridge
+        # Capture the return from the Brev bridge
         response = bridge.send_command(RobotAction.DEPLOY_AGENT, {"target": "Stage_0"})
         
-        # 2. VERIFY: Only proceed if the robot confirmed movement
+        # VERIFICATION
         if response and response.get("status") == "success":
             old_val = s.oscillator[0]['defects']
             
-            # 3. TRUTH: Only heal software state if hardware worked
+            # Only heal software state if hardware worked
             s.oscillator[0]['defects'] = max(0, s.oscillator[0]['defects'] - 0.1)
             
-            # 4. LOG: Your database now contains 100% verified research data
+            # LOG INTO THE DATABASE
             log_to_db("INSERT INTO interventions VALUES (?,?,?,?,?,?)", 
                     (s.experiment_id, s.timestep, "REPAIR", "defects", old_val, s.oscillator[0]['defects']))
             
             s.action_timeline.insert(0, {"time": s.timestep, "ai_intent": "REPAIR", "robot_action": "DEPLOY_AGENT", "status": "SUCCESS ✅"})
         else:
-            # 5. ALERT: Log the failure to the timeline for your paper
+            # Log the failure to the timeline for your paper
             s.action_timeline.insert(0, {"time": s.timestep, "ai_intent": "REPAIR", "robot_action": "DEPLOY_AGENT", "status": "FAILED ❌"})
 
-    # LAYER 3: ACTION TIMELINE
+    #  ACTION TIMELINE
     st.markdown("<br><div style='font-size:0.9rem; color:#888; margin-bottom:10px;'>DECISION & ACTION TIMELINE</div>", unsafe_allow_html=True)
     
     table_html = "<table class='timeline-table'><tr><th>T-STEP</th><th>AI INTENT</th><th>ISAAC SIM ACTION</th><th>STATUS</th></tr>"
     for row in s.action_timeline[:5]:
-        # Color coding the success!
+        # Color coding the success
         status_color = "#00FF41" if "SUCCESS" in row['status'] or row['status'] == "NOMINAL" else "#FF4136"
         table_html += f"<tr><td>{row['time']}</td><td>{row['ai_intent']}</td><td>{row['robot_action']}</td><td style='color:{status_color};'>{row['status']}</td></tr>"
     table_html += "</table>"

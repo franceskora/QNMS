@@ -1,4 +1,3 @@
-# Save this as: ai_module.py
 import os
 from dotenv import load_dotenv
 from google import genai
@@ -9,6 +8,7 @@ api_key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key)
 MODEL_ID = "gemini-2.0-flash" 
 
+# System Prompt
 def get_gemini_decision(freq_ghz, current_uA, temp_k):
     """
     Real-time Inference Function.

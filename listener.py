@@ -3,32 +3,30 @@ from flask_cors import CORS
 import numpy as np
 import threading
 
-# 1. Start the Simulation App (MUST BE FIRST)
+# Start the Simulation App 
 from isaacsim import SimulationApp
 simulation_app = SimulationApp({"headless": True})
 
 
-# 2. Correct 5.1 Imports
+# Imports
 from isaacsim.core.api import World
-# Using the dedicated Franka class handles the /panda vs /Franka pathing automatically
+# Using the dedicated Franka class that handles the /panda vs /Franka pathing
 from isaacsim.robot.manipulators.examples.franka import Franka 
 from isaacsim.core.api.objects import DynamicCuboid
 from isaacsim.storage.native import get_assets_root_path
 from isaacsim.core.utils.types import ArticulationAction
 
-# 3. Setup the World
+# Setup the World
 world = World(stage_units_in_meters=1.0)
 world.scene.add_default_ground_plane()
 
-# 4. Add the Robot using the specialized class
-# This class knows exactly where the articulation root and joints are.
+# Add the Robot
 robot = world.scene.add(
     Franka(prim_path="/World/Franka", name="franka_arm")
 )
 
-# 5. Initialize Physics
+# Initialize Physics
 world.reset()
-# We take one step to ensure the physics 'Articulation View' is actually built in memory
 world.step(render=True)
 
 # -------------------------
@@ -40,7 +38,6 @@ CORS(app)
 @app.route('/telemetry', methods=['GET'])
 def get_telemetry():
     try:
-        # Specialized Franka class has better internal joint tracking
         joints = robot.get_joint_positions().tolist()
     except Exception as e:
         joints = []
@@ -70,11 +67,10 @@ def handle_command():
         )
         robot.apply_action(repair_pose)
 
-        # 🚀 THE FIX: Start the 60 steps in a separate thread
         thread = threading.Thread(target=execute_repair)
         thread.start()
 
-        # IMMEDIATELY tell Vultr success so the dashboard doesn't time out
+        # Tell Vultr success so the dashboard
         return jsonify({"status": "success", "message": "Repair initiated in background"})
 
     return jsonify({"status": "error", "message": "Unknown command"})

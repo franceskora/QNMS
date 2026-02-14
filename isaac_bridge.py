@@ -32,9 +32,9 @@ class IsaacEvent:
     payload: Dict[str, Any]
     timestamp: float = time.time()
 
-# --- THE ENHANCED BRIDGE ---
+# --- THE BRIDGE ---
 class IsaacBridge:
-    def __init__(self, db_path="isaac_persistence.db", simulation_mode=False): # FLIPPED TO FALSE
+    def __init__(self, db_path="isaac_persistence.db", simulation_mode=False):
         self.db_path = db_path
         self.simulation_mode = simulation_mode
         self._init_db()
@@ -75,7 +75,7 @@ class IsaacBridge:
                         defect_density=0.04, 
                         thermal_map={
                             "Core": data.get('temperature', 0),
-                            "Joint_Data": joint_str  # <-- Sending live kinematics
+                            "Joint_Data": joint_str
                         },
                         active_agents=1,
                         environment=data.get('cosmos_environment', 'Unknown'),
@@ -85,13 +85,12 @@ class IsaacBridge:
                 print(f"⚠️ Connection to Brev failed, using fallback state.")
 
         # Fallback Simulation State
-        # Fallback Simulation State
         return WorldState(
             defect_density=0.04,
             thermal_map={
                 "Core_A": 45.2, 
                 "SRAM_1": 38.9,
-                "Joint_Data": "0.0, -0.78, 0.0, -2.35, 0.0, 1.57, 0.78" # <-- Default standby pose
+                "Joint_Data": "0.0, -0.78, 0.0, -2.35, 0.0, 1.57, 0.78" 
             },
             active_agents=1,
             environment="Simulated_Environment",
@@ -120,8 +119,7 @@ class IsaacBridge:
             "sector_focus": "Primary_Die"
         })
 
-# --- SINGLETON ---
-# This is where you control the switch for the whole project
+# SINGLETON
 bridge = IsaacBridge(simulation_mode=False) 
 
 if __name__ == "__main__":
