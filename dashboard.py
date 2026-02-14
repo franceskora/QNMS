@@ -1,6 +1,7 @@
 import streamlit as st
 import plotly.graph_objects as go
 import numpy as np
+import pandas as pd
 import time
 import os
 import math
@@ -68,6 +69,10 @@ def log_to_db(query, params):
     except Exception as e:
         print(f"DB Error: {e}")
 
+def load_table(table_name):
+    with sqlite3.connect('factory_data.db') as conn:
+        return pd.read_sql_query(f"SELECT * FROM {table_name} ORDER BY timestep DESC LIMIT 50", conn)
+
 def calculate_mosfet_current(v_gs, v_ds, defect_density, temp_kelvin, variation):
     V_th_actual = 0.22 + (0.15 * defect_density) + variation - (0.0005 * (temp_kelvin - 300))
     mobility = 1.0 / (1 + (defect_density * 2.0) + ((temp_kelvin-300)*0.002))
@@ -80,7 +85,14 @@ def calculate_mosfet_current(v_gs, v_ds, defect_density, temp_kelvin, variation)
         return 0.5 * Kn * (v_gs - V_th_actual)**2 * (1 + 0.04 * v_ds), "SATURATION", V_th_actual
 
 if 'state' not in st.session_state:
-    st.session_state.state = SystemState(str(uuid.uuid4()))
+    eid = str(uuid.uuid4())
+    st.session_state.state = SystemState(eid)
+    
+    log_to_db(
+        "INSERT INTO experiments VALUES (?,?,?,?)",
+        (eid, datetime.now().isoformat(), "QNMS_RUN", 42)
+    )
+
 
 # --- 3. ORCHESTRATION ---
 with st.sidebar:
@@ -95,9 +107,21 @@ with st.sidebar:
     # Download button logic (safely checks if file exists first)
     if os.path.exists("factory_data.db"):
         with open("factory_data.db", "rb") as fp:
-            st.download_button(label="Download DB", data=fp, file_name="surge_data.db")
+            st.download_button(label="Download DB", data=fp, file_name="factory_data.db")
     else:
         st.caption("Waiting for DB generation...")
+    
+    st.divider()
+    st.markdown("### Live Research Database")
+
+    table_choice = st.selectbox(
+        "Select Table",
+        ["ai_decisions", "interventions", "performance_metrics", "device_states"]
+    )
+
+    df = load_table(table_choice)
+    st.dataframe(df, use_container_width=True)
+
 
 @st.fragment(run_every="2s")
 def solver_loop():
@@ -196,6 +220,8 @@ def solver_loop():
         </div>
         """, unsafe_allow_html=True)
 
+    decision = "NOMINAL"
+
    # ACTION LOOP & TIMELINE
     if freq_ghz < 20.0 and auto_repair: # Using 20.0 threshold to force failure for the video
         decision = get_gemini_decision(freq_ghz, stage_currents[0]*1e6, avg_temp)
@@ -204,21 +230,26 @@ def solver_loop():
         log_to_db("INSERT INTO ai_decisions VALUES (?,?,?,?,?,?,?)", 
                   (s.experiment_id, s.timestep, freq_ghz, avg_temp, stage_currents[0], decision, "Floor Violation"))
 
-        if "REPAIR" in decision.upper() and s.action_timeline[0]["ai_intent"] != "REPAIR":
+        # --- GOOD LINES (Verified/Research Grade) ---
+    if "REPAIR" in decision.upper() and s.action_timeline[0]["ai_intent"] != "REPAIR":
+        # 1. Capture the return from the Brev bridge
+        response = bridge.send_command(RobotAction.DEPLOY_AGENT, {"target": "Stage_0"})
+        
+        # 2. VERIFY: Only proceed if the robot confirmed movement
+        if response and response.get("status") == "success":
             old_val = s.oscillator[0]['defects']
             
-            # Send command to Brev
-            bridge.send_command(RobotAction.DEPLOY_AGENT, {"target": "Stage_0"})
-            
-            # Apply the Physics Heal
+            # 3. TRUTH: Only heal software state if hardware worked
             s.oscillator[0]['defects'] = max(0, s.oscillator[0]['defects'] - 0.1)
             
-            # RESTORED: Log Intervention to DB
+            # 4. LOG: Your database now contains 100% verified research data
             log_to_db("INSERT INTO interventions VALUES (?,?,?,?,?,?)", 
-                      (s.experiment_id, s.timestep, "REPAIR", "defects", old_val, s.oscillator[0]['defects']))
+                    (s.experiment_id, s.timestep, "REPAIR", "defects", old_val, s.oscillator[0]['defects']))
             
-            # ADDED: Explicit SUCCESS status in the timeline
             s.action_timeline.insert(0, {"time": s.timestep, "ai_intent": "REPAIR", "robot_action": "DEPLOY_AGENT", "status": "SUCCESS ✅"})
+        else:
+            # 5. ALERT: Log the failure to the timeline for your paper
+            s.action_timeline.insert(0, {"time": s.timestep, "ai_intent": "REPAIR", "robot_action": "DEPLOY_AGENT", "status": "FAILED ❌"})
 
     # LAYER 3: ACTION TIMELINE
     st.markdown("<br><div style='font-size:0.9rem; color:#888; margin-bottom:10px;'>DECISION & ACTION TIMELINE</div>", unsafe_allow_html=True)

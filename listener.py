@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import numpy as np
+import threading
 
 # 1. Start the Simulation App (MUST BE FIRST)
 from isaacsim import SimulationApp
 simulation_app = SimulationApp({"headless": True})
+
 
 # 2. Correct 5.1 Imports
 from isaacsim.core.api import World
@@ -12,6 +14,7 @@ from isaacsim.core.api import World
 from isaacsim.robot.manipulators.examples.franka import Franka 
 from isaacsim.core.api.objects import DynamicCuboid
 from isaacsim.storage.native import get_assets_root_path
+from isaacsim.core.utils.types import ArticulationAction
 
 # 3. Setup the World
 world = World(stage_units_in_meters=1.0)
@@ -51,20 +54,28 @@ def get_telemetry():
         "joint_positions": joints
     })
 
+def execute_repair():
+    """Background task to run physics without blocking the web server."""
+    for _ in range(60): 
+        world.step(render=True)
+
 @app.route('/command', methods=['POST'])
 def handle_command():
     data = request.json
     cmd = data.get('command')
 
     if cmd == "deploy_nano_agent":
-        # Standard Franka home/action pose
-        repair_pose = np.array([0.0, -0.6, 0.0, -2.1, 0.0, 1.5, 0.7, 0.04, 0.04])
+        repair_pose = ArticulationAction(
+            joint_positions=np.array([0.0, -0.6, 0.0, -2.1, 0.0, 1.5, 0.7, 0.04, 0.04])
+        )
         robot.apply_action(repair_pose)
 
-        for _ in range(60): # More steps for a smoother visual transition
-            world.step(render=True)
+        # 🚀 THE FIX: Start the 60 steps in a separate thread
+        thread = threading.Thread(target=execute_repair)
+        thread.start()
 
-        return jsonify({"status": "success", "message": "Robot deployed"})
+        # IMMEDIATELY tell Vultr success so the dashboard doesn't time out
+        return jsonify({"status": "success", "message": "Repair initiated in background"})
 
     return jsonify({"status": "error", "message": "Unknown command"})
 

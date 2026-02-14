@@ -104,7 +104,7 @@ class IsaacBridge:
         
         if not self.simulation_mode:
             try:
-                resp = requests.post(f"{BASE_URL}/command", json=payload, timeout=2)
+                resp = requests.post(f"{BASE_URL}/command", json=payload, timeout=10)
                 return resp.json()
             except Exception as e:
                 print(f"⚠️ Failed to send command to Brev: {e}")
